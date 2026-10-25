@@ -1,0 +1,98 @@
+name: build-flutter-ohos-har
+
+on:
+  workflow_dispatch:
+    inputs:
+      flutter_branches:
+        description: 'flutter_flutter 分支（逗号分隔）'
+        required: false
+        default: 'oh-3.44.9-dev,oh-3.47.7-dev'
+      release:
+        description: '是否发布 Release'
+        type: boolean
+        default: true
+      build_host:
+        description: '额外构建 host 产物（gen_snapshot，体积大）'
+        type: boolean
+        default: false
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      date: ${{ steps.date.outputs.date }}
+    steps:
+      - name: 计算矩阵与日期
+        id: matrix
+        run: |
+          branches="${{ inputs.flutter_branches || 'oh-3.44.9-dev,oh-3.47.7-dev' }}"
+          matrix=$(python3 -c "import json,sys; print(json.dumps({'branch': [b.strip() for b in sys.argv[1].split(',') if b.strip()]}))" "$branches")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix"
+      - name: 计算日期
+        id: date
+        run: echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 释放磁盘空间
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3 git curl wget zip unzip
+
+      - name: 下载 HarmonyOS SDK
+        run: bash download/download-sdk.sh
+
+      - name: 构建引擎（${{ matrix.branch }}）
+        env:
+          BRANCH: ${{ matrix.branch }}
+          BUILD_HOST: ${{ inputs.build_host && 'true' || 'false' }}
+        run: bash build.sh "$BRANCH"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-ohos-${{ matrix.branch }}
+          path: out/${{ matrix.branch }}/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: 发布 Release
+        if: ${{ inputs.release != false }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ matrix.branch }}-${{ needs.prepare.outputs.date }}
+          name: Flutter OHOS Engine (${{ matrix.branch }}) ${{ needs.prepare.outputs.date }}
+          body: |
+            分支 `${{ matrix.branch }}`，含 Impeller Vulkan device-lost 补丁。
+
+            产物：
+            - `flutter.har`（合并版，ohos.py 原始输出）
+            - `flutter_embedding_release.har`（legacy hvigor 构建器用）
+            - `arm64_v8a_release.har`（legacy hvigor 构建器用）
+            - `libflutter.so`
+            - `SHA256SUMS` / `VERSION`
+          files: out/${{ matrix.branch }}/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
