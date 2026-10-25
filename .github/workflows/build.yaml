@@ -15,6 +15,14 @@ on:
         description: '额外构建 host 产物（gen_snapshot，体积大）'
         type: boolean
         default: false
+      use_bisheng:
+        description: '使用 BiSheng 编译器（推荐；关掉则退回 llvm）'
+        type: boolean
+        default: true
+      gn_extra_param:
+        description: '追加给 tools/gn 的参数（默认 --lto，即开启 LTO 优化）'
+        required: false
+        default: '--lto'
   push:
     branches: [ main ]
 
@@ -63,10 +71,23 @@ jobs:
       - name: 下载 HarmonyOS SDK
         run: bash download/download-sdk.sh
 
+      - name: 检查 SDK 布局
+        run: |
+          echo "--- /sdk"
+          ls -l /sdk
+          echo "--- sdk/default"
+          ls -l /sdk/command-line-tools/sdk/default || true
+          echo "--- openharmony"
+          ls -l /sdk/command-line-tools/sdk/default/openharmony || true
+          echo "--- node/ohpm/hvigor"
+          ls /sdk/command-line-tools/tools || true
+
       - name: 构建引擎（${{ matrix.branch }}）
         env:
           BRANCH: ${{ matrix.branch }}
           BUILD_HOST: ${{ inputs.build_host && 'true' || 'false' }}
+          USE_BISHENG: ${{ inputs.use_bisheng == false && 'false' || 'true' }}
+          GN_EXTRA_PARAM: ${{ inputs.gn_extra_param }}
         run: bash build.sh "$BRANCH"
 
       - name: 上传产物

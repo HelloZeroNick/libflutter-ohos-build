@@ -64,3 +64,12 @@ BUILD_HOST=true ./build.sh oh-3.44.9-dev # 额外构建 host 产物
 
 首次会 `gclient sync` 拉取 `flutter_flutter` 及其全部 DEPS（较慢，约 10–20 分钟），
 之后编译 release 引擎。
+
+## 工具链与优化
+
+- **编译器**：优先 BiSheng（`ohos.py` 默认走 `--target-toolchain <sdk>/default/hms/native/BiSheng`）。
+  脚本会先校验 BiSheng 是否存在，缺失时直接报错；确需退回 llvm 用 `USE_BISHENG=false`。
+- **优化**：release 模式 + `GN_EXTRA_PARAM=--lto`（默认），即 `is_debug=false`、`enable_lto=true`、
+  不传 `--unoptimized`；构建结束会把 `args.gn` 里 `enable_lto / is_debug / is_official_build /
+  optimize_for_size / target_toolchain` 打印到日志里，便于确认。
+- 未做 PGO（与 libmpv 构建保持一致）。
