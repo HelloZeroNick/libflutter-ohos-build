@@ -73,6 +73,20 @@ export PATH="$SDK_ROOT/command-line-tools/tools/ohpm/bin:$SDK_ROOT/command-line-
 echo "=== DEVECO_SDK_HOME=$DEVECO_SDK_HOME"
 echo "=== OHOS_NDK_HOME=$OHOS_NDK_HOME"
 
+# 本 SDK 包没有 /sdk/command-line-tools/tools/，即没有 hvigorw，而
+# ohos_create_flutter_har.py 硬编码调用它（ninja → exit 127）。
+# 用 npm 装一份同版本 hvigor 并造一个 hvigorw 顶上。
+HVIGOR_SHIM_BIN="$ROOT/.hvigor-shim/bin"
+if ! command -v hvigorw >/dev/null 2>&1; then
+  echo "=== SDK 未提供 hvigorw，安装 hvigor shim"
+  BIN_DIR="$HVIGOR_SHIM_BIN" bash "$ROOT/download/hvigor-shim.sh"
+  export PATH="$HVIGOR_SHIM_BIN:$PATH"
+else
+  echo "=== 使用 SDK 自带的 hvigorw: $(command -v hvigorw)"
+fi
+echo "=== hvigorw: $(command -v hvigorw || echo missing)"
+hvigorw --version 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # 2. 工具链：优先 BiSheng（ohos.py 默认），缺失时可显式退回 llvm
 # ---------------------------------------------------------------------------
