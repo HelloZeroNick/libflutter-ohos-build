@@ -151,7 +151,9 @@ fi
 
 ARGS=(-n config compile har -t release --ohos-cpu arm64)
 if [ -n "$GN_EXTRA_PARAM" ]; then
-  ARGS+=(-g "$GN_EXTRA_PARAM")
+  # ohos.py 的参数是 nargs='?'，必须用「紧贴」写法，否则 --lto 会被当成未知选项：
+  #   ✅ -g=--lto / -g--lto     ❌ -g --lto
+  ARGS+=("-g=$GN_EXTRA_PARAM")
 fi
 if [ -n "$BISHENG_FLAG" ]; then
   ARGS+=("$BISHENG_FLAG")
