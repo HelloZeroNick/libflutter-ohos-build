@@ -23,8 +23,6 @@ on:
         description: '追加给 tools/gn 的参数（默认 --lto，即开启 LTO 优化）'
         required: false
         default: '--lto'
-  push:
-    branches: [ main ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
