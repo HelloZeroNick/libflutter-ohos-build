@@ -149,27 +149,39 @@ if [ ! -e depot_tools ] && [ -d src/flutter/third_party/depot_tools ]; then
   ln -sfn src/flutter/third_party/depot_tools depot_tools
 fi
 
-ARGS=(-n config compile har -t release --ohos-cpu arm64)
+# 注意：ohos.py 的 buildByNameAndType() 是按 SUPPORT_BUILD_NAMES 的固定顺序遍历的：
+#   clean -> config -> har -> compile -> zip -> zip2 -> upload -> host
+# 所以 `-n config compile har` 会变成 config -> har -> compile，har 在 libflutter.so 生成之前就跑，必然失败。
+# 必须拆成两次调用：先 config+compile，再 har。
+COMMON_ARGS=(-t release --ohos-cpu arm64)
 if [ -n "$GN_EXTRA_PARAM" ]; then
-  # ohos.py 的参数是 nargs='?'，必须用「紧贴」写法，否则 --lto 会被当成未知选项：
+  # -g 是 nargs='?'，必须用「紧贴」写法，否则 --lto 会被当成未知选项：
   #   ✅ -g=--lto / -g--lto     ❌ -g --lto
-  ARGS+=("-g=$GN_EXTRA_PARAM")
+  COMMON_ARGS+=("-g=$GN_EXTRA_PARAM")
 fi
 if [ -n "$BISHENG_FLAG" ]; then
-  ARGS+=("$BISHENG_FLAG")
-fi
-if [ "${BUILD_HOST:-false}" = "true" ]; then
-  ARGS+=(-n host)
+  COMMON_ARGS+=("$BISHENG_FLAG")
 fi
 
 OUT_ENGINE="$CHECKOUT/engine/src/out/ohos_release_arm64"
 
-echo "=== 开始编译: ./ohos ${ARGS[*]}"
-./ohos "${ARGS[@]}"
+echo "=== [1/2] config + compile: ./ohos -n config compile ${COMMON_ARGS[*]}"
+./ohos -n config compile "${COMMON_ARGS[@]}"
 
 if [ -f "$OUT_ENGINE/args.gn" ]; then
   echo "=== args.gn 关键项"
   grep -E "^(enable_lto|is_debug|is_official_build|optimize_for_size|target_toolchain|target_triple|is_component_build) " "$OUT_ENGINE/args.gn" || true
+fi
+
+echo "=== libflutter.so"
+ls -l "$OUT_ENGINE/libflutter.so" "$OUT_ENGINE/so.unstripped/libflutter.so" 2>/dev/null || true
+
+echo "=== [2/2] har: ./ohos -n har ${COMMON_ARGS[*]}"
+./ohos -n har "${COMMON_ARGS[@]}"
+
+if [ "${BUILD_HOST:-false}" = "true" ]; then
+  echo "=== host 产物"
+  ./ohos -n host "${COMMON_ARGS[@]}" || true
 fi
 
 if [ ! -f "$OUT_ENGINE/flutter.har" ]; then
